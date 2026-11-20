@@ -256,12 +256,9 @@
     var visibles = idx === 6 ? [5, 6] : [idx, idx + 1];
 
     var h = htmlRappels(j);
-    h += '<div class="navigation"><button type="button" class="lien-bouton" data-sem="-7">Précédente</button>' +
-      '<div class="centre">' + esc(majuscule(nomMois(sel))) + '</div>' +
-      '<button type="button" class="lien-bouton" data-sem="7">Suivante</button></div>';
-    if (lundi !== lundiDe(j) || sel !== j) h += '<div class="retour"><button type="button" class="lien-bouton" data-sem="0">Revenir à aujourd\'hui</button></div>';
+    h += htmlNavigation('sem', majuscule(nomMois(sel)), 'Semaine précédente', 'Semaine suivante', lundi !== lundiDe(j) || sel !== j);
 
-    h += '<div class="panneau">';
+    h += '<div class="panneau" data-glisser="semaine">';
     // Bande des 7 jours
     h += '<div class="bande">' + jours.map(function (d, i) {
       return '<button type="button" class="bande-jour' + (d === sel ? ' choisi' : '') + (d === j ? ' aujourdhui' : '') + (d < j ? ' passe' : '') + '" data-sel="' + d + '">' +
@@ -276,24 +273,47 @@
       return '<div class="' + classeCol(i) + '">' + esc(dateCourte(d)) + '</div>';
     }).join('') + '</div>';
 
-    // Ligne « jour entier »
-    h += '<div class="ag ag-journee"><div class="gouttiere">Jour<br>entier</div>' + jours.map(function (d, i) {
-      return '<div class="' + classeCol(i) + '">' + pucesDu(d) + '</div>';
-    }).join('') + '</div>';
+    // Sur téléphone, une ligne vide pour les 2 jours affichés est masquée (classe « vide-mobile »)
+    function classeLigne(contenus) {
+      return visibles.some(function (i) { return contenus[i]; }) ? '' : ' vide-mobile';
+    }
+    var rienSurMobile = true;
+
+    // Ligne « jour entier » (seulement s'il y a quelque chose dans la semaine)
+    var puces = jours.map(pucesDu);
+    if (puces.some(Boolean)) {
+      var cl = classeLigne(puces);
+      if (!cl) rienSurMobile = false;
+      h += '<div class="ag ag-journee' + cl + '"><div class="gouttiere">Jour<br>entier</div>' + jours.map(function (d, i) {
+        return '<div class="' + classeCol(i) + '">' + puces[i] + '</div>';
+      }).join('') + '</div>';
+    }
 
     // Seulement les heures où il se passe quelque chose cette semaine, empilées
     var parJour = jours.map(horairesDu);
     var heures = [];
     parJour.forEach(function (l) { l.forEach(function (x) { var hh = Math.floor(x.debut / 60); if (heures.indexOf(hh) < 0) heures.push(hh); }); });
     heures.sort(function (a, b) { return a - b; });
-    if (!heures.length) h += '<div class="agenda-vide">Rien à heure fixe cette semaine.</div>';
     heures.forEach(function (hh) {
-      h += '<div class="ag ag-ligne"><div class="gouttiere-h">' + (hh < 10 ? '0' : '') + hh + ':00</div>' + jours.map(function (d, i) {
-        return '<div class="' + classeCol(i) + '">' + parJour[i].filter(function (x) { return Math.floor(x.debut / 60) === hh; }).map(htmlBloc).join('') + '</div>';
+      var cases = parJour.map(function (l) { return l.filter(function (x) { return Math.floor(x.debut / 60) === hh; }).map(htmlBloc).join(''); });
+      var cl = classeLigne(cases);
+      if (!cl) rienSurMobile = false;
+      h += '<div class="ag ag-ligne' + cl + '"><div class="gouttiere-h">' + (hh < 10 ? '0' : '') + hh + ':00</div>' + jours.map(function (d, i) {
+        return '<div class="' + classeCol(i) + '">' + cases[i] + '</div>';
       }).join('') + '</div>';
     });
-    h += '</div>';
+    if (!heures.length && !puces.some(Boolean)) h += '<div class="agenda-vide">Rien de prévu cette semaine.</div>';
+    else if (rienSurMobile) h += '<div class="agenda-vide seul-mobile">Rien de prévu ces deux jours.</div>';
+    h += '</div><p class="astuce seul-tactile">Glisse vers la gauche ou la droite pour changer de jour.</p>';
     return h;
+  }
+
+  function htmlNavigation(cle, titre, avant, apres, retour) {
+    return '<div class="navigation">' +
+      '<button type="button" class="fleche" data-' + cle + '="-1" aria-label="' + esc(avant) + '" title="' + esc(avant) + '">‹</button>' +
+      '<div class="centre">' + esc(titre) + '</div>' +
+      '<button type="button" class="fleche" data-' + cle + '="1" aria-label="' + esc(apres) + '" title="' + esc(apres) + '">›</button></div>' +
+      '<div class="retour">' + (retour ? '<button type="button" class="pilule" data-' + cle + '="0">Aujourd\'hui</button>' : '') + '</div>';
   }
 
   function horairesDu(jour) {
@@ -349,21 +369,34 @@
     var debut = E.moisVue || premier(j);
     var fin = ajouter(moisSuivant(debut), -1);
     var choisi = E.jourMois && E.jourMois >= debut && E.jourMois <= fin ? E.jourMois : (j >= debut && j <= fin ? j : debut);
-    var h = '<div class="navigation"><button type="button" class="lien-bouton" data-mois="-1">Précédent</button>' +
-      '<div class="centre">' + esc(majuscule(nomMois(debut))) + '</div>' +
-      '<button type="button" class="lien-bouton" data-mois="1">Suivant</button></div>';
-    h += '<div class="panneau"><div class="grille">' + JOURS_COURTS.map(function (n) { return '<div class="entete-jour">' + n + '</div>'; }).join('');
+    var h = htmlNavigation('mois', majuscule(nomMois(debut)), 'Mois précédent', 'Mois suivant', debut !== premier(j));
+    h += '<div class="mois-disposition"><div class="mois-calendrier"><div class="panneau" data-glisser="mois"><div class="grille">' +
+      JOURS_COURTS.map(function (n) { return '<div class="entete-jour">' + n + '</div>'; }).join('');
     var d = lundiDe(debut);
     var dernier = ajouter(lundiDe(fin), 6);
     while (d <= dernier) {
       if (d < debut || d > fin) h += '<div class="case hors-mois"></div>';
-      else h += '<button type="button" class="case' + (d === j ? ' aujourdhui' : '') + (d === choisi ? ' choisi' : '') + '" data-jour="' + d + '">' +
-        '<span class="num">' + versDate(d).getUTCDate() + '</span><span class="marques">' + marquesDu(d) + '</span></button>';
+      else h += '<button type="button" class="case' + (d === j ? ' aujourdhui' : '') + (d === choisi ? ' choisi' : '') + (d < j ? ' passe' : '') + '" data-jour="' + d + '">' +
+        '<span class="num">' + versDate(d).getUTCDate() + '</span><span class="marques">' + marquesDu(d) + '</span>' + minisDu(d) + '</button>';
       d = ajouter(d, 1);
     }
-    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div>';
-    h += '<h3>' + esc(majuscule(dateLongue(choisi))) + '</h3>' + htmlListe(choisi);
+    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div></div>';
+    h += '<div class="mois-detail"><h3>' + esc(majuscule(dateLongue(choisi))) + '</h3>' + htmlListe(choisi) + '</div></div>';
     return h;
+  }
+
+  // Petites étiquettes lisibles dans les cases du mois (tablette et ordinateur)
+  function minisDu(jour) {
+    var l = [];
+    publications().filter(function (p) { return p.date === jour; })
+      .sort(function (a, b) { return (a.heure || '99').localeCompare(b.heure || '99'); })
+      .forEach(function (p) { l.push('<span class="mini ' + famille(p.type) + '">' + icone(p.type) + '<span>' + esc(p.titre) + '</span></span>'); });
+    evenementsDu(jour).forEach(function (e) { l.push('<span class="mini ' + familleEvenement(e) + '"><span>' + esc(e.titre) + (e.valide ? '' : ' ?') + '</span></span>'); });
+    if (commentairesDu(jour).length) l.push('<span class="mini f-commentaire"><span>' + commentairesDu(jour).length + ' comm.</span></span>');
+    if (estJourDeVeille(jour)) l.push('<span class="mini f-veille"><span>Veille</span></span>');
+    if (!l.length) return '';
+    var reste = l.length > 3 ? '<span class="mini-plus">+ ' + (l.length - 3) + '</span>' : '';
+    return '<span class="minis">' + l.slice(0, 3).join('') + reste + '</span>';
   }
 
   function htmlListe(jour) {
@@ -410,13 +443,14 @@
     var faits = tous.filter(function (c) { return c.fait || c.date < j; });
     var h = '<h2>À commenter</h2><p class="sous-titre">Les publications d\'autres comptes à commenter.</p>';
     if (!aVenir.length) h += '<div class="vide">Aucun commentaire prévu pour l\'instant. La veille Instagram les ajoutera.</div>';
+    h += '<div class="cartes">';
     var jourCourant = null;
     aVenir.forEach(function (c) {
       if (c.date !== jourCourant) { jourCourant = c.date; h += '<h3>' + esc(majuscule(dateLongue(c.date))) + '</h3>'; }
       h += htmlCommentaire(c);
     });
     if (faits.length) h += '<h3>Déjà faits ou passés</h3>' + faits.slice(-15).reverse().map(htmlCommentaire).join('');
-    return h;
+    return h + '</div>';
   }
 
   function htmlCommentaire(c) {
@@ -442,9 +476,9 @@
     var passes = tous.filter(function (e) { return (e.dateFin || e.date) < j; });
     var h = '<h2>Événements</h2><p class="sous-titre">Validés en vert, à valider en grisé avec un point d\'interrogation.</p>';
     if (!aVenir.length) h += '<div class="vide">Aucun événement à venir pour l\'instant.</div>';
-    h += aVenir.map(htmlEvenement).join('');
+    h += '<div class="cartes">' + aVenir.map(htmlEvenement).join('');
     if (passes.length) h += '<h3>Passés</h3>' + passes.reverse().map(htmlEvenement).join('');
-    return h;
+    return h + '</div>';
   }
 
   function quandEvenement(e) {
@@ -508,9 +542,12 @@
     document.getElementById('feuille-contenu').innerHTML = h;
     var feuille = document.querySelector('.feuille');
     feuille.className = 'feuille ' + fam;
+    feuille.scrollTop = 0;
     document.getElementById('voile').hidden = false;
+    document.body.classList.add('fige');
+    try { document.getElementById('feuille-fermer').focus({ preventScroll: true }); } catch (e) { /* rien */ }
   }
-  function fermerDetail() { document.getElementById('voile').hidden = true; }
+  function fermerDetail() { document.getElementById('voile').hidden = true; document.body.classList.remove('fige'); }
 
   /* ---------- Écran de la clé ---------- */
   function afficherEcranCle(message) {
@@ -551,16 +588,8 @@
     if (t.hasAttribute('data-choix')) { fermerDetail(); changerStatut(a('data-id'), a('data-choix')); return; }
     if (t.id === 'feuille-fermer') { fermerDetail(); return; }
     if (t.hasAttribute('data-sel')) { E.jourSel = a('data-sel'); afficher(); return; }
-    if (t.hasAttribute('data-sem')) {
-      var n = Number(a('data-sem'));
-      E.jourSel = n === 0 ? null : ajouter(E.jourSel || aujourdhui(), n);
-      afficher(); return;
-    }
-    if (t.hasAttribute('data-mois')) {
-      var base = E.moisVue || premier(aujourdhui());
-      E.moisVue = a('data-mois') === '1' ? moisSuivant(base) : moisPrecedent(base);
-      E.jourMois = null; afficher(); return;
-    }
+    if (t.hasAttribute('data-sem')) { deplacerSemaine(Number(a('data-sem')) * 7); return; }
+    if (t.hasAttribute('data-mois')) { deplacerMois(Number(a('data-mois'))); return; }
     if (t.hasAttribute('data-jour')) { E.jourMois = a('data-jour'); afficher(); return; }
     if (t.hasAttribute('data-copier')) {
       var c = commentaires().filter(function (x) { return x.id === a('data-copier'); })[0];
@@ -583,6 +612,45 @@
       return;
     }
     if (t.id === 'actualiser') { charger(); return; }
+  });
+
+  function deplacerSemaine(jours) {
+    E.jourSel = jours === 0 ? null : ajouter(E.jourSel || aujourdhui(), jours);
+    afficher();
+  }
+  function deplacerMois(sens) {
+    var base = E.moisVue || premier(aujourdhui());
+    E.moisVue = sens === 0 ? null : (sens > 0 ? moisSuivant(base) : moisPrecedent(base));
+    E.jourMois = null;
+    afficher();
+  }
+
+  // Glisser du doigt : jour suivant / précédent (téléphone), semaine (tablette), mois
+  var depart = null;
+  document.addEventListener('touchstart', function (ev) {
+    var zone = ev.target.closest('[data-glisser]');
+    depart = zone && ev.touches.length === 1 ? { x: ev.touches[0].clientX, y: ev.touches[0].clientY, zone: zone.getAttribute('data-glisser') } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', function (ev) {
+    if (!depart) return;
+    var dx = ev.changedTouches[0].clientX - depart.x;
+    var dy = ev.changedTouches[0].clientY - depart.y;
+    var zone = depart.zone;
+    depart = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    var sens = dx < 0 ? 1 : -1;
+    if (zone === 'semaine') deplacerSemaine(sens * (window.matchMedia('(min-width: 760px)').matches ? 7 : 1));
+    if (zone === 'mois') deplacerMois(sens);
+  }, { passive: true });
+
+  // Clavier (ordinateur) : Échap ferme la fiche, flèches gauche / droite pour naviguer
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !document.getElementById('voile').hidden) { fermerDetail(); return; }
+    if (!document.getElementById('voile').hidden || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+    var sens = ev.key === 'ArrowRight' ? 1 : -1;
+    if (E.onglet === 'semaine') deplacerSemaine(sens * 7);
+    if (E.onglet === 'mois') deplacerMois(sens);
   });
 
   document.getElementById('voile').addEventListener('click', function (ev) { if (ev.target.id === 'voile') fermerDetail(); });

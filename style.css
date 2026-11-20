@@ -253,3 +253,98 @@ details.rappel[open] .voir { display: none; }
   h1 { font-size: 36px; }
   .grille .case { min-height: 84px; }
 }
+
+/* ===================== Confort d'utilisation, toutes tailles ===================== */
+
+/* Navigation : grandes flèches faciles à toucher */
+.navigation { margin: 12px 0 4px; }
+.fleche {
+  width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid var(--beige); background: var(--planning);
+  font-size: 26px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding-bottom: 3px;
+}
+.pilule { border: 1px solid var(--or); background: var(--planning); border-radius: 999px; padding: 6px 18px; font-size: 14px; cursor: pointer; min-height: 36px; }
+.retour { text-align: center; margin: 0 0 6px; }
+.retour:empty { display: none; }
+.lien-bouton { min-height: 36px; }
+body.fige { overflow: hidden; }
+
+/* Surlignage un peu plus bas, pour qu'il ne ressemble jamais à un mot barré */
+.surligne { background: linear-gradient(transparent 56%, var(--sl) 56%, var(--sl) 100%); }
+
+/* Puces « jour entier » : jusqu'à 2 lignes au lieu d'être coupées */
+.puce .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Onglets toujours sur une ligne */
+.onglets button { white-space: nowrap; font-size: clamp(12.5px, 3.7vw, 15px); }
+
+/* Petite aide au geste, seulement sur écran tactile de téléphone */
+.astuce { font-size: 12px; color: var(--marron-doux); text-align: center; margin: 8px 0 0; }
+.seul-tactile { display: none; }
+@media (hover: none) and (pointer: coarse) and (max-width: 759px) { .seul-tactile { display: block; } }
+
+/* Sur téléphone : on masque les lignes vides pour les 2 jours affichés */
+@media (max-width: 759px) {
+  .vide-mobile { display: none; }
+}
+@media (min-width: 760px) {
+  .seul-mobile { display: none; }
+}
+
+/* Petits téléphones */
+@media (max-width: 380px) {
+  h1 { font-size: 25px; }
+  .entete { padding-top: calc(env(safe-area-inset-top) + 10px); }
+  .navigation .centre { font-size: 20px; }
+  .contenu { padding: 0 10px; }
+  .panneau { padding: 8px; }
+  .ag { grid-template-columns: 40px repeat(2, minmax(0, 1fr)); }
+}
+
+/* Téléphone à l'horizontale : barre d'onglets plus fine */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --hauteur-onglets: 46px; }
+}
+
+/* Repères clavier et survol (ordinateur) */
+:focus-visible { outline: 2px solid var(--or); outline-offset: 2px; }
+@media (hover: hover) {
+  .bloc:hover, .puce:hover { filter: brightness(.96); }
+  .case:not(.hors-mois):hover { border-color: var(--or); }
+  .bande-jour:not(.choisi):hover .num { background: var(--ivoire); }
+  .fleche:hover, .pilule:hover { border-color: var(--marron); }
+  .onglets button:hover { color: var(--marron); }
+}
+
+/* Étiquettes lisibles dans les cases du mois : tablette et ordinateur */
+.minis { display: none; }
+.case.passe { opacity: .75; }
+@media (min-width: 760px) {
+  .bande { display: none; }                 /* les 7 colonnes suffisent */
+  .bloc-titre { -webkit-line-clamp: 4; }
+  .grille { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .case { align-items: stretch; padding: 4px; min-width: 0; overflow: hidden; }
+  .case .num { align-self: center; }
+  .case .marques { display: none; }
+  .minis { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+  .mini {
+    display: flex; align-items: center; gap: 3px; font-size: 11px; line-height: 1.25; text-align: left;
+    background: var(--fond); border-radius: 4px; padding: 1px 4px; box-shadow: inset 2px 0 0 var(--couleur); min-width: 0;
+  }
+  .mini > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini .icone { width: 10px; height: 10px; }
+  .mini-plus { font-size: 10.5px; color: var(--marron-doux); text-align: left; }
+}
+
+/* Cartes sur 2 colonnes quand il y a la place */
+@media (min-width: 900px) {
+  .cartes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .cartes h3 { grid-column: 1 / -1; }
+  .cartes .carte { margin-bottom: 0; }
+}
+
+/* Mois : calendrier et détail du jour côte à côte sur grand écran */
+@media (min-width: 1000px) {
+  .mois-disposition { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
+  .mois-detail { position: sticky; top: 64px; }
+  .mois-detail h3 { margin-top: 12px; }
+}
