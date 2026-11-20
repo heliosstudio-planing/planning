@@ -83,7 +83,8 @@
   /* ---------- Clé secrète ---------- */
   function lireCle() {
     var m = location.hash.match(/cle=([A-Za-z0-9]+)/);
-    if (m) { ecrireLocal('cle', m[1]); history.replaceState(null, '', location.pathname + location.search); return m[1]; }
+    // La clé reste dans l'adresse : l'icône de l'écran d'accueil la garde ainsi à chaque ouverture.
+    if (m) { ecrireLocal('cle', m[1]); return m[1]; }
     return lireLocal('cle');
   }
 

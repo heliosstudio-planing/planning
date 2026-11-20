@@ -2,8 +2,6 @@
   "name": "Mon planning Helios Studio",
   "short_name": "Planning",
   "lang": "fr",
-  "start_url": "./",
-  "scope": "./",
   "display": "standalone",
   "background_color": "#EEE6D7",
   "theme_color": "#EEE6D7",
