@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mon planning Helios Studio</title>
+  <meta name="theme-color" content="#EEE6D7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Planning">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icones/icone-180.png">
+  <link rel="icon" type="image/png" href="icones/icone-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="entete">
+    <div class="entete-texte">
+      <div class="marque">Helios Studio</div>
+      <h1>Mon planning</h1>
+    </div>
+    <div class="maj">
+      <span id="etat-maj">Chargement…</span>
+      <button type="button" id="actualiser" class="lien-bouton">Actualiser</button>
+    </div>
+  </header>
+
+  <main id="contenu" class="contenu"></main>
+
+  <nav class="onglets" id="onglets">
+    <button type="button" data-onglet="semaine">Semaine</button>
+    <button type="button" data-onglet="mois">Mois</button>
+    <button type="button" data-onglet="commentaires">À commenter</button>
+    <button type="button" data-onglet="evenements">Événements</button>
+  </nav>
+
+  <div class="voile" id="voile" hidden>
+    <div class="feuille" role="dialog" aria-modal="true">
+      <div id="feuille-contenu"></div>
+      <button type="button" class="feuille-fermer" id="feuille-fermer">Fermer</button>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
