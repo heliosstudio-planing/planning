@@ -380,9 +380,43 @@
         '<span class="num">' + versDate(d).getUTCDate() + '</span><span class="marques">' + marquesDu(d) + '</span>' + minisDu(d) + '</button>';
       d = ajouter(d, 1);
     }
-    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div></div>';
+    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div>' + htmlCalendrier(debut) + '</div>';
     h += '<div class="mois-detail"><h3>' + esc(majuscule(dateLongue(choisi))) + '</h3>' + htmlListe(choisi) + '</div></div>';
     return h;
+  }
+
+  /* ---------- Fichier pour le calendrier iCloud « Instagram » ---------- */
+  // Période couverte par le fichier d'un mois : le mois entier, prolongé jusqu'à la fin d'un cycle
+  // qui déborde (lancement : 30/11 au 4/01), sans reprendre ce qu'un fichier précédent couvrait déjà,
+  // et jamais avant aujourd'hui.
+  function plageCalendrier(debutMois) {
+    var debut = debutMois;
+    var fin = ajouter(moisSuivant(debutMois), -1);
+    ((E.planning && E.planning.cycles) || []).forEach(function (c) {
+      if (c.debut < debut && c.fin >= debut) debut = ajouter(c.fin, 1);
+      if (c.debut <= fin && c.fin > fin) fin = c.fin;
+    });
+    var j = aujourdhui();
+    if (debut < j) debut = j;
+    return debut <= fin ? [debut, fin] : null;
+  }
+
+  function momentsCalendrier(debut, fin) {
+    return publications().filter(function (p) { return p.heure && p.type !== 'story_spontanee' && p.date >= debut && p.date <= fin; });
+  }
+
+  function htmlCalendrier(debutMois) {
+    var h = '<div class="bloc-calendrier"><div class="etiquette">Calendrier iPhone « Instagram »</div>';
+    var plage = plageCalendrier(debutMois);
+    if (!plage) {
+      return h + '<p class="meta">Ce mois est déjà dans le fichier du mois précédent. Rien à ajouter.</p></div>';
+    }
+    var n = momentsCalendrier(plage[0], plage[1]).length;
+    if (!n) return h + '<p class="meta">Aucun moment de publication à heure fixe du ' + esc(dateCourte(plage[0])) + ' au ' + esc(dateCourte(plage[1])) + '</p></div>';
+    var lien = CONFIG.messager + '?cle=' + encodeURIComponent(E.cle) + '&ics=1&debut=' + plage[0] + '&fin=' + plage[1];
+    return h + '<p class="meta">' + n + ' moment' + (n > 1 ? 's' : '') + ' de publication du ' + esc(dateCourte(plage[0])) + ' au ' + esc(dateCourte(plage[1])) +
+      ', avec une alerte 15 minutes avant.</p>' +
+      '<a class="bouton plein" href="' + esc(lien) + '" target="_blank" rel="noopener">Ajouter à mon calendrier</a></div>';
   }
 
   // Petites étiquettes lisibles dans les cases du mois (tablette et ordinateur)

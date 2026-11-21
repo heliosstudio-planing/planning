@@ -335,6 +335,10 @@ body.fige { overflow: hidden; }
   .mini-plus { font-size: 10.5px; color: var(--marron-doux); text-align: left; }
 }
 
+/* Encadré « Calendrier iPhone » (écran Mois) */
+.bloc-calendrier { background: var(--planning); border: 1px solid var(--trait); border-left: 4px solid var(--c-story); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+.bloc-calendrier .meta { margin: 4px 0 10px; }
+
 /* Cartes sur 2 colonnes quand il y a la place */
 @media (min-width: 900px) {
   .cartes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
