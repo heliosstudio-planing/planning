@@ -167,17 +167,34 @@
   }
   function trouverEvenement(id) { return tousEvenements().filter(function (e) { return e.id === id; })[0]; }
 
+  function motsDe(t) { return String(t).toLowerCase().normalize('NFD').replace(/[^a-z0-9 ]/g, '').split(' ').filter(function (m) { return m.length > 3; }); }
+  // Celui retenu lors d'un déplacement, sinon celui du même jour (le plus ressemblant s'il y en a plusieurs)
   function dossierPour(pub) {
+    if (pub.dossierId) {
+      var retenu = E.dossiers.filter(function (d) { return d.id === pub.dossierId; })[0];
+      if (retenu) return retenu;
+    }
     var duJour = E.dossiers.filter(function (d) { return d.date === pub.date; });
-    if (!duJour.length) return null;
-    if (duJour.length === 1) return duJour[0];
-    var mot = (TYPES[pub.type] || '').toLowerCase();
-    return duJour.filter(function (d) { return d.nom.toLowerCase().indexOf(mot) >= 0; })[0] || duJour[0];
+    if (duJour.length <= 1) return duJour[0] || null;
+    var type = pub.type === 'reel' ? 'reel' : pub.type === 'carrousel' ? 'carrousel' : 'story';
+    var titre = motsDe(pub.titre);
+    function note(d) {
+      var nom = motsDe(d.nom);
+      return (nom.indexOf(type) >= 0 ? 1 : 0) + 2 * titre.filter(function (m) { return m !== 'story' && nom.indexOf(m) >= 0; }).length;
+    }
+    return duJour.slice().sort(function (a, b) { return note(b) - note(a); })[0];
   }
 
   function evenementsDu(jour) { return evenements().filter(function (e) { return e.date <= jour && jour <= (e.dateFin || e.date); }); }
   function commentairesDu(jour) { return commentaires().filter(function (c) { return c.date === jour; }); }
-  function estJourDeVeille(jour) { return jourSemaine(jour) === 1 && jour >= ((E.planning && E.planning.debutPlanning) || '0'); }
+  // Renvoie le lundi d'origine de la veille affichée ce jour-là, sinon null
+  function veilleDu(jour) {
+    var exceptions = (E.planning && E.planning.veillesDeplacees) || {};
+    var deplacee = Object.keys(exceptions).filter(function (lundi) { return exceptions[lundi] === jour; })[0];
+    if (deplacee) return deplacee;
+    return jourSemaine(jour) === 1 && !exceptions[jour] && jour >= ((E.planning && E.planning.debutPlanning) || '0') ? jour : null;
+  }
+  function estJourDeVeille(jour) { return veilleDu(jour) !== null; }
   function familleEvenement(e) { return estValide(e) ? 'f-evenement' : 'f-a-valider'; }
 
   function elementsDu(jour) {
@@ -404,21 +421,30 @@
         '<span class="num">' + versDate(d).getUTCDate() + '</span><span class="marques">' + marquesDu(d) + '</span>' + minisDu(d) + '</button>';
       d = ajouter(d, 1);
     }
-    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div>' + htmlCalendrier(debut) + '</div>';
+    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div>' + htmlAPlacer() + htmlCalendrier(debut) + '</div>';
     h += '<div class="mois-detail"><h3>' + esc(majuscule(dateLongue(choisi))) + '</h3>' + htmlListe(choisi) + '</div></div>';
     return h;
   }
 
+  /* ---------- Ce qui attend un jour ---------- */
+  function htmlAPlacer() {
+    var l = (E.planning && E.planning.aPlacer) || [];
+    if (!l.length) return '';
+    return '<div class="bloc-calendrier"><div class="etiquette">À placer, sans jour pour l\'instant</div><ul class="a-placer">' + l.map(function (p) {
+      return '<li>' + icone(p.type) + '<span>' + esc(p.titre) + '</span></li>';
+    }).join('') + '</ul></div>';
+  }
+
   /* ---------- Fichier pour le calendrier iCloud « Instagram » ---------- */
-  // Période couverte par le fichier d'un mois : le mois entier, prolongé jusqu'à la fin d'un cycle
-  // qui déborde (lancement : 30/11 au 4/01), sans reprendre ce qu'un fichier précédent couvrait déjà,
-  // et jamais avant aujourd'hui.
+  // Période couverte par le fichier d'un mois : le mois entier, élargi au cycle qui le touche
+  // (lancement : 30/11 au 4/01), jamais avant aujourd'hui. Réajouter un fichier ne crée pas de doublon.
   function plageCalendrier(debutMois) {
     var debut = debutMois;
     var fin = ajouter(moisSuivant(debutMois), -1);
     ((E.planning && E.planning.cycles) || []).forEach(function (c) {
-      if (c.debut < debut && c.fin >= debut) debut = ajouter(c.fin, 1);
-      if (c.debut <= fin && c.fin > fin) fin = c.fin;
+      if (c.fin < debutMois || c.debut > ajouter(moisSuivant(debutMois), -1)) return;
+      if (c.debut < debut) debut = c.debut;
+      if (c.fin > fin) fin = c.fin;
     });
     var j = aujourdhui();
     if (debut < j) debut = j;
@@ -433,7 +459,7 @@
     var h = '<div class="bloc-calendrier"><div class="etiquette">Calendrier iPhone « Instagram »</div>';
     var plage = plageCalendrier(debutMois);
     if (!plage) {
-      return h + '<p class="meta">Ce mois est déjà dans le fichier du mois précédent. Rien à ajouter.</p></div>';
+      return h + '<p class="meta">Ce mois est passé : rien à ajouter.</p></div>';
     }
     var n = momentsCalendrier(plage[0], plage[1]).length;
     if (!n) return h + '<p class="meta">Aucun moment de publication à heure fixe du ' + esc(dateCourte(plage[0])) + ' au ' + esc(dateCourte(plage[1])) + '</p></div>';
@@ -472,7 +498,7 @@
       return '<div class="ligne ' + famille(p.type) + '">' +
         '<div class="heure' + (p.heure ? '' : ' journee') + '">' + (p.heure ? esc(heure(p.heure)) : 'Dans la journée') + '</div>' +
         '<div><div class="type">' + icone(p.type) + esc(TYPES[p.type]) + '</div><div class="titre">' + esc(p.titre) + '</div>' +
-        (p.note ? '<div class="note">' + esc(p.note) + '</div>' : '') +
+        (p.note && !noteLongue(p) ? '<div class="note">' + esc(p.note) + '</div>' : '') +
         '<div class="actions"><button type="button" class="statut s-' + esc(p.statut) + '" data-detail="pub:' + esc(p.id) + '"' + (E.enCours[p.id] ? ' disabled' : '') + '>' +
         surligne(p.statut) + '</button>' + lien + '</div></div></div>';
     }
@@ -489,7 +515,7 @@
         '<div class="titre">' + el.d.length + ' commentaire' + (el.d.length > 1 ? 's' : '') + ' à faire</div><div class="note">' + faits + ' fait' + (faits > 1 ? 's' : '') + '</div>' +
         '<div class="actions"><button type="button" class="lien-bouton" data-aller="commentaires">Voir les commentaires</button></div></div></div>';
     }
-    return '<div class="ligne f-veille"><div class="heure journee">Dans la journée</div><div><div class="type">Lundi</div>' +
+    return '<div class="ligne f-veille"><div class="heure journee">Dans la journée</div><div><div class="type">Veille</div>' +
       '<div class="titre">Veille Instagram</div><div class="note">Idées, événements, commentaires</div></div></div>';
   }
 
@@ -523,7 +549,8 @@
       (c.precisions ? '<div class="precisions">' + esc(c.precisions) + '</div>' : '') +
       '<div class="boutons"><button type="button" class="bouton" data-copier="' + esc(c.id) + '">Copier le commentaire</button>' +
       '<button type="button" class="bouton' + (c.fait ? '' : ' plein') + '" data-fait="' + esc(c.id) + '"' + (E.enCours[c.id] ? ' disabled' : '') + '>' +
-      (c.fait ? 'Remettre à faire' : 'Marquer comme fait') + '</button></div></div>';
+      (c.fait ? 'Remettre à faire' : 'Marquer comme fait') + '</button>' +
+      (c.fait ? '' : '<button type="button" class="bouton" data-detail="uncom:' + esc(c.id) + '">Déplacer</button>') + '</div></div>';
   }
 
   /* ---------- Écran Événements ---------- */
@@ -570,6 +597,52 @@
     return lienSur(e.lien) ? '<div class="precisions"><a class="lien-dossier" href="' + esc(e.lien) + '" target="_blank" rel="noopener">Voir l\'événement</a></div>' : '';
   }
 
+  /* ---------- Notes d'une publication ---------- */
+  function noteLongue(p) { return p.note.indexOf(' · ') >= 0 || p.note.length > 90; }
+  function htmlALire(dossier) {
+    var aLire = (dossier.fichiers || []).some(function (f) { return f.indexOf('00_A-LIRE') === 0; });
+    return aLire ? '<div class="meta" style="margin-top:4px">Les consignes sont dans le fichier 00_A-LIRE de ce dossier.</div>' : '';
+  }
+  function htmlNotePreparation(p, dossier) {
+    if (!p.note || !noteLongue(p)) return '';
+    return '<details class="preparation"><summary>Idées de préparation</summary>' +
+      (dossier ? '<div class="meta">Écrites avant la création. En cas de différence, c\'est le dossier qui compte.</div>' : '') +
+      '<ul>' + p.note.split(' · ').map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></details>';
+  }
+
+  /* ---------- Déplacer un élément ---------- */
+  function htmlDeplacer(genre, id, date, h) {
+    var j = aujourdhui(), avecHeure = genre === 'pub';
+    var raccourcis = [[j, 'Aujourd\'hui'], [ajouter(j, 1), 'Demain'], [ajouter(date, 7), 'Une semaine plus tard']]
+      .filter(function (x, i) { return x[0] !== date && (i < 2 || x[0] > ajouter(j, 1)); });
+    return '<details class="deplacer"><summary class="bouton">Déplacer</summary><div class="deplacer-choix" data-genre="' + genre + '" data-id="' + esc(id) + '">' +
+      '<div class="boutons">' + raccourcis.map(function (x) {
+        return '<button type="button" class="bouton" data-vers="' + x[0] + '">' + x[1] + ' (' + esc(dateCourte(x[0])) + ')</button>';
+      }).join('') + '</div>' +
+      '<label>Ou un autre jour<input type="date" class="champ-date" value="' + esc(date) + '"></label>' +
+      (avecHeure ? '<label>Heure<input type="time" class="champ-heure" value="' + esc(h || '') + '"></label>' : '') +
+      '<button type="button" class="bouton plein" data-enregistrer-deplacement>Enregistrer</button>' +
+      (genre === 'pub' ? '<div class="meta">Ton calendrier iPhone ne change pas tout seul : réappuie ensuite sur « Ajouter à mon calendrier », dans l\'onglet Mois.</div>' : '') +
+      '</div></details>';
+  }
+
+  function deplacer(genre, id, date, h) {
+    // Copie complète : en cas d'échec, on revient exactement à l'état d'avant
+    var avant = JSON.stringify(E.planning);
+    var cle = 'deplacement:' + genre + ':' + id;
+    if (genre === 'pub') { var p = trouverPublication(id); var d0 = dossierPour(p); if (p.date !== date && !p.dossierId && d0 && d0.id) p.dossierId = d0.id; p.date = date; p.heure = h; }
+    if (genre === 'com') commentaires().forEach(function (c) { if (c.id === id) c.date = date; });
+    if (genre === 'comsDuJour') commentaires().forEach(function (c) { if (c.date === id && !c.fait) c.date = date; });
+    if (genre === 'evt') { var e = trouverEvenement(id); e.dateFin = ajouter(e.dateFin || e.date, ecart(e.date, date)); e.date = date; }
+    if (genre === 'veille') { var v = E.planning.veillesDeplacees = E.planning.veillesDeplacees || {}; if (date === id) delete v[id]; else v[id] = date; }
+    if (E.onglet === 'semaine') E.jourSel = date;
+    if (E.onglet === 'mois') { E.moisVue = premier(date); E.jourMois = date; }
+    E.enCours[cle] = true; afficher();
+    envoyer({ action: 'deplacer', genre: genre, id: id, date: date, heure: h })
+      .catch(function () { E.planning = JSON.parse(avant); alert("Le déplacement n'a pas pu être enregistré. Vérifie ta connexion et réessaie."); })
+      .then(function () { delete E.enCours[cle]; afficher(); });
+  }
+
   /* ---------- Feuille de détail ---------- */
   function ouvrirDetail(cle) {
     var genre = cle.split(':')[0];
@@ -583,9 +656,10 @@
       h = '<div class="etiquette">' + icone(p.type) + esc(TYPES[p.type]) + '</div>' +
         '<div class="grand-titre">' + esc(p.titre) + '</div>' +
         '<div class="meta">' + esc(majuscule(dateLongue(p.date))) + ', ' + (p.heure ? esc(heure(p.heure)) : 'dans la journée') + '</div>' +
-        (p.note ? '<div class="meta">' + esc(p.note) + '</div>' : '') +
-        (dossier ? '<div style="margin-top:8px"><a class="lien-dossier" href="' + esc(dossier.url) + '" target="_blank" rel="noopener">Ouvrir le dossier du jour</a></div>'
+        (p.note && !noteLongue(p) ? '<div class="meta">' + esc(p.note) + '</div>' : '') +
+        (dossier ? '<div style="margin-top:8px"><a class="lien-dossier" href="' + esc(dossier.url) + '" target="_blank" rel="noopener">Ouvrir le dossier du jour</a></div>' + htmlALire(dossier)
           : (p.type === 'story_spontanee' ? '' : '<div class="sans-dossier" style="margin-top:8px">Pas encore de dossier dans « À publier »</div>')) +
+        htmlNotePreparation(p, dossier) + htmlDeplacer('pub', p.id, p.date, p.heure) +
         '<div class="etiquette" style="margin-top:14px">Statut</div><div class="choix">' + STATUTS.map(function (s) {
           return '<button type="button" class="statut s-' + s[0] + (s[0] === p.statut ? ' actuel' : '') + '" data-choix="' + s[0] + '" data-id="' + esc(p.id) + '">' + surligne(s[0]) + '</button>';
         }).join('') + '</div>';
@@ -598,7 +672,7 @@
         '<div class="grand-titre">' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</div>' +
         '<div class="meta">' + esc(quandEvenement(e)) + '</div>' + (e.lieu ? '<div class="meta">' + esc(e.lieu) + '</div>' : '') +
         (limite ? '<div class="precisions" style="margin-top:8px">' + esc(limite) + '</div>' : '') +
-        (e.note ? '<div class="precisions">' + esc(e.note) + '</div>' : '') + htmlLienEvenement(e) +
+        (e.note ? '<div class="precisions">' + esc(e.note) + '</div>' : '') + htmlLienEvenement(e) + htmlDeplacer('evt', e.id, e.date) +
         '<div class="etiquette" style="margin-top:14px">Ma décision</div><div class="choix">' + DECISIONS.map(function (x) {
           return '<button type="button" class="statut' + (x[0] === decisionDe(e) ? ' actuel' : '') + '" data-decision="' + x[0] + '" data-id="' + esc(e.id) + '">' + surligneDecision(x[0]) + '</button>';
         }).join('') + '</div><div class="meta">« Je n\'y vais pas » retire l\'événement de ton planning.</div>';
@@ -607,11 +681,17 @@
       var coms = commentairesDu(id);
       h = '<div class="etiquette">Commentaires</div><div class="grand-titre">' + coms.length + ' commentaire' + (coms.length > 1 ? 's' : '') + ' à faire</div>' +
         '<div class="meta">' + esc(majuscule(dateLongue(id))) + '</div>' +
-        '<div style="margin-top:12px"><button type="button" class="bouton plein" data-aller="commentaires">Voir les commentaires</button></div>';
+        '<div style="margin-top:12px"><button type="button" class="bouton plein" data-aller="commentaires">Voir les commentaires</button></div>' + (coms.some(function (c) { return !c.fait; }) ? htmlDeplacer('comsDuJour', id, id) : '');
+    } else if (genre === 'uncom') {
+      var c = commentaires().filter(function (x) { return x.id === id; })[0];
+      if (!c) return;
+      fam = 'f-commentaire';
+      h = '<div class="etiquette">Commentaire</div><div class="grand-titre">' + esc(c.compte) + '</div>' +
+        '<div class="meta">' + esc(majuscule(dateLongue(c.date))) + '</div>' + htmlDeplacer('com', c.id, c.date).replace('<details ', '<details open ');
     } else if (genre === 'veille') {
       fam = 'f-veille';
-      h = '<div class="etiquette">Lundi</div><div class="grand-titre">Veille Instagram</div>' +
-        '<div class="meta">' + esc(majuscule(dateLongue(id))) + '</div><div class="precisions" style="margin-top:8px">Idées, événements, commentaires.</div>';
+      h = '<div class="etiquette">Veille</div><div class="grand-titre">Veille Instagram</div>' +
+        '<div class="meta">' + esc(majuscule(dateLongue(id))) + '</div><div class="precisions" style="margin-top:8px">Idées, événements, commentaires.</div>' + htmlDeplacer('veille', veilleDu(id) || id, id);
     }
     document.getElementById('feuille-contenu').innerHTML = h;
     var feuille = document.querySelector('.feuille');
@@ -661,6 +741,15 @@
     if (t.hasAttribute('data-detail')) { ouvrirDetail(a('data-detail')); return; }
     if (t.hasAttribute('data-choix')) { fermerDetail(); changerStatut(a('data-id'), a('data-choix')); return; }
     if (t.hasAttribute('data-decision')) { fermerDetail(); deciderEvenement(a('data-id'), a('data-decision')); return; }
+    if (t.hasAttribute('data-vers') || t.hasAttribute('data-enregistrer-deplacement')) {
+      var zone = t.closest('.deplacer-choix');
+      var champH = zone.querySelector('.champ-heure');
+      var date = a('data-vers') || zone.querySelector('.champ-date').value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert('Choisis un jour.'); return; }
+      fermerDetail();
+      deplacer(zone.getAttribute('data-genre'), zone.getAttribute('data-id'), date, champH ? (champH.value.slice(0, 5) || null) : null);
+      return;
+    }
     if (t.id === 'feuille-fermer') { fermerDetail(); return; }
     if (t.hasAttribute('data-sel')) { E.jourSel = a('data-sel'); afficher(); return; }
     if (t.hasAttribute('data-sem')) { deplacerSemaine(Number(a('data-sem')) * 7); return; }
