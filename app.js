@@ -7,6 +7,10 @@
   var STATUTS = [['a_preparer', 'À préparer'], ['en_cours', 'En cours'], ['prete', 'Prête'], ['programmee', 'Programmée'], ['publiee', 'Publiée']];
   var LIBELLE_STATUT = {};
   STATUTS.forEach(function (s) { LIBELLE_STATUT[s[0]] = s[1]; });
+  // Décision de Jodie pour chaque événement
+  var DECISIONS = [['a_valider', 'À valider'], ['valide', 'Validé'], ['a_acheter', 'Place à acheter'], ['achetee', 'Place achetée'], ['refuse', 'Je n\'y vais pas']];
+  var LIBELLE_DECISION = {};
+  DECISIONS.forEach(function (d) { LIBELLE_DECISION[d[0]] = d[1]; });
   var STATUTS_PRETS = ['prete', 'programmee', 'publiee'];
   var JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   var LETTRES = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -28,6 +32,7 @@
   }
   function icone(type) { return ICONES[type] ? '<span class="icone ' + famille(type) + '">' + ICONES[type] + '</span>' : ''; }
   function surligne(statut) { return '<span class="surligne sl-' + esc(statut) + '">' + esc(LIBELLE_STATUT[statut] || statut) + '</span>'; }
+  function surligneDecision(d) { return '<span class="surligne sl-ev-' + esc(d) + '">' + esc(LIBELLE_DECISION[d]) + '</span>'; }
   function marque(cle) { return ICONES[cle] ? icone(cle) : '<span class="pastille ' + famille(cle) + '"></span>'; }
 
   var LEGENDE = [
@@ -42,7 +47,8 @@
     jourSel: null,      // jour choisi dans la semaine
     moisVue: null,      // 1er jour du mois affiché
     jourMois: null,     // jour choisi dans le mois
-    enCours: {}
+    enCours: {},
+    problemes: []
   };
 
   /* ---------- Dates (chaînes AAAA-MM-JJ) ---------- */
@@ -99,7 +105,8 @@
           if (rep.erreur === 'cle') { E.cle = null; ecrireLocal('cle', ''); afficherEcranCle('Cette clé ne fonctionne pas.'); return; }
           throw new Error(rep.erreur);
         }
-        E.planning = rep.planning; E.dossiers = rep.dossiers || []; E.luLe = new Date(); E.horsLigne = false;
+        if (Object.keys(E.enCours).length) return; // un changement est en train de s'enregistrer
+        E.planning = rep.planning; E.dossiers = rep.dossiers || []; E.problemes = rep.problemes || []; E.luLe = new Date(); E.horsLigne = false;
         memoriser(); afficher();
       })
       .catch(function () { E.horsLigne = true; afficher(); });
@@ -126,6 +133,16 @@
       .then(function () { delete E.enCours[id]; afficher(); });
   }
 
+  function deciderEvenement(id, decision) {
+    var e = trouverEvenement(id);
+    if (!e || decisionDe(e) === decision) return;
+    var ancienne = e.decision;
+    e.decision = decision; E.enCours[id] = true; afficher();
+    envoyer({ action: 'evenement', id: id, decision: decision })
+      .catch(function () { e.decision = ancienne; alert("Le changement n'a pas pu être enregistré. Vérifie ta connexion et réessaie."); })
+      .then(function () { delete E.enCours[id]; afficher(); });
+  }
+
   function marquerCommentaire(id, fait) {
     var c = commentaires().filter(function (x) { return x.id === id; })[0];
     if (!c) return;
@@ -138,12 +155,17 @@
 
   /* ---------- Lecture des données ---------- */
   function publications() { return (E.planning && E.planning.publications) || []; }
-  function evenements() { return (E.planning && E.planning.evenements) || []; }
+  function tousEvenements() { return (E.planning && E.planning.evenements) || []; }
+  function decisionDe(e) { return LIBELLE_DECISION[e.decision] ? e.decision : (e.valide ? 'valide' : 'a_valider'); }
+  function estValide(e) { return ['valide', 'a_acheter', 'achetee'].indexOf(decisionDe(e)) >= 0; }
+  // Les événements où Jodie ne va pas disparaissent du planning
+  function evenements() { return tousEvenements().filter(function (e) { return decisionDe(e) !== 'refuse'; }); }
+  function lienSur(u) { return /^https?:\/\//i.test(u || '') ? u : ''; }
   function commentaires() { return (E.planning && E.planning.commentaires) || []; }
   function trouverPublication(id) {
     return publications().concat((E.planning && E.planning.aPlacer) || []).filter(function (p) { return p.id === id; })[0];
   }
-  function trouverEvenement(id) { return evenements().filter(function (e) { return e.id === id; })[0]; }
+  function trouverEvenement(id) { return tousEvenements().filter(function (e) { return e.id === id; })[0]; }
 
   function dossierPour(pub) {
     var duJour = E.dossiers.filter(function (d) { return d.date === pub.date; });
@@ -156,7 +178,7 @@
   function evenementsDu(jour) { return evenements().filter(function (e) { return e.date <= jour && jour <= (e.dateFin || e.date); }); }
   function commentairesDu(jour) { return commentaires().filter(function (c) { return c.date === jour; }); }
   function estJourDeVeille(jour) { return jourSemaine(jour) === 1 && jour >= ((E.planning && E.planning.debutPlanning) || '0'); }
-  function familleEvenement(e) { return e.valide ? 'f-evenement' : 'f-a-valider'; }
+  function familleEvenement(e) { return estValide(e) ? 'f-evenement' : 'f-a-valider'; }
 
   function elementsDu(jour) {
     var liste = [];
@@ -181,7 +203,7 @@
     publications().filter(function (p) { return p.date === jour; })
       .sort(function (a, b) { return (a.heure || '99').localeCompare(b.heure || '99'); })
       .forEach(function (p) { ajout(p.type); });
-    evenementsDu(jour).forEach(function (e) { ajout(e.valide ? 'evenement' : 'a-valider'); });
+    evenementsDu(jour).forEach(function (e) { ajout(estValide(e) ? 'evenement' : 'a-valider'); });
     if (commentairesDu(jour).length) ajout('commentaire');
     if (estJourDeVeille(jour)) ajout('veille');
     return c.map(marque).join('');
@@ -189,13 +211,14 @@
 
   /* ---------- Rappels ---------- */
   function rappels(jour) {
-    var r = [];
+    var r = E.problemes.map(function (x) { return { titre: 'Une mise à jour n\'a pas pu être ajoutée', texte: x.fichier + ' : ' + x.raison + '. Montre ce message à la conversation Claude qui l\'a déposée.' }; });
     // Les événements eux-mêmes sont visibles dans la semaine : seul le rappel de date limite reste en haut.
     evenements().forEach(function (e) {
-      if (!e.valide && e.dateLimiteInscription) {
+      var d = decisionDe(e);
+      if ((d === 'a_valider' || d === 'a_acheter') && e.dateLimiteInscription) {
         var m = ecart(jour, e.dateLimiteInscription);
         if (m >= 0 && m <= 2) {
-          r.push({ titre: 'Date limite pour valider et t\'inscrire ' + (m === 0 ? "aujourd'hui" : m === 1 ? 'demain' : 'dans 2 jours'),
+          r.push({ titre: (d === 'a_acheter' ? 'Date limite pour acheter ta place ' : 'Date limite pour valider et t\'inscrire ') + (m === 0 ? "aujourd'hui" : m === 1 ? 'demain' : 'dans 2 jours'),
             texte: e.titre + ' (' + dateLongue(e.date) + ')' });
         }
       }
@@ -341,15 +364,16 @@
     var e = x.d;
     return '<button type="button" class="bloc ' + familleEvenement(e) + '" data-detail="evt:' + esc(e.id) + '">' +
       '<span class="bloc-haut">' + esc(heure(e.heureDebut) + (e.heureFin ? ' – ' + heure(e.heureFin) : '')) + '</span>' +
-      '<span class="bloc-titre">' + esc(e.titre) + (e.valide ? '' : ' ?') + '</span>' +
-      (e.lieu ? '<span class="bloc-statut">' + esc(e.lieu) + '</span>' : '') + '</button>';
+      '<span class="bloc-titre">' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</span>' +
+      (e.lieu ? '<span class="bloc-statut">' + esc(e.lieu) + '</span>' : '') +
+      '<span class="bloc-statut">' + surligneDecision(decisionDe(e)) + '</span></button>';
   }
 
   function pucesDu(jour) {
     var h = '';
     evenementsDu(jour).forEach(function (e) {
       if (e.heureDebut) return;
-      h += '<button type="button" class="puce ' + familleEvenement(e) + '" data-detail="evt:' + esc(e.id) + '"><span class="txt">' + esc(e.titre) + (e.valide ? '' : ' ?') + '</span></button>';
+      h += '<button type="button" class="puce ' + familleEvenement(e) + '" data-detail="evt:' + esc(e.id) + '"><span class="txt">' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</span></button>';
     });
     publications().forEach(function (p) {
       if (p.date !== jour || p.heure) return;
@@ -425,7 +449,7 @@
     publications().filter(function (p) { return p.date === jour; })
       .sort(function (a, b) { return (a.heure || '99').localeCompare(b.heure || '99'); })
       .forEach(function (p) { l.push('<span class="mini ' + famille(p.type) + '">' + icone(p.type) + '<span>' + esc(p.titre) + '</span></span>'); });
-    evenementsDu(jour).forEach(function (e) { l.push('<span class="mini ' + familleEvenement(e) + '"><span>' + esc(e.titre) + (e.valide ? '' : ' ?') + '</span></span>'); });
+    evenementsDu(jour).forEach(function (e) { l.push('<span class="mini ' + familleEvenement(e) + '"><span>' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</span></span>'); });
     if (commentairesDu(jour).length) l.push('<span class="mini f-commentaire"><span>' + commentairesDu(jour).length + ' comm.</span></span>');
     if (estJourDeVeille(jour)) l.push('<span class="mini f-veille"><span>Veille</span></span>');
     if (!l.length) return '';
@@ -456,8 +480,8 @@
       var e = el.d;
       var h = e.heureDebut ? heure(e.heureDebut) + (e.heureFin ? ' – ' + heure(e.heureFin) : '') : '';
       return '<div class="ligne ' + familleEvenement(e) + '"><div class="heure' + (h ? '' : ' journee') + '">' + (h ? esc(h) : 'Toute la journée') + '</div>' +
-        '<div><div class="type">' + (e.valide ? 'Événement' : 'Événement à valider') + '</div><div class="titre">' + esc(e.titre) + (e.valide ? '' : ' ?') + '</div>' +
-        (e.lieu ? '<div class="note">' + esc(e.lieu) + '</div>' : '') + (e.note ? '<div class="note">' + esc(e.note) + '</div>' : '') + '</div></div>';
+        '<div><div class="type">Événement</div><div class="titre">' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</div>' +
+        (e.lieu ? '<div class="note">' + esc(e.lieu) + '</div>' : '') + (e.note ? '<div class="note">' + esc(e.note) + '</div>' : '') + htmlBoutonDecision(e) + '</div></div>';
     }
     if (el.genre === 'com') {
       var faits = el.d.filter(function (c) { return c.fait; }).length;
@@ -490,10 +514,10 @@
   function htmlCommentaire(c) {
     var langue = c.langue === 'en' ? 'En anglais' : c.langue === 'fr' ? 'En français' : '';
     return '<div class="carte f-commentaire' + (c.fait ? ' fait' : '') + '">' +
-      (c.miniature ? '<img class="miniature" src="' + esc(c.miniature) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') +
+      (lienSur(c.miniature) ? '<img class="miniature" src="' + esc(c.miniature) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') +
       '<div class="compte">' + esc(c.compte) + '</div>' +
       '<div class="meta">' + (c.datePublication ? 'Publiée le ' + esc(dateLongue(c.datePublication)) : '') + (langue ? (c.datePublication ? ' · ' : '') + langue : '') + '</div>' +
-      (c.lien ? '<div style="margin-top:4px"><a class="lien-dossier" href="' + esc(c.lien) + '" target="_blank" rel="noopener">Voir la publication</a></div>' : '') +
+      (lienSur(c.lien) ? '<div style="margin-top:4px"><a class="lien-dossier" href="' + esc(c.lien) + '" target="_blank" rel="noopener">Voir la publication</a></div>' : '') +
       '<div class="texte-a-copier">' + esc(c.texte) + '</div>' +
       (c.traduction ? '<div class="traduction">Traduction : ' + esc(c.traduction) + '</div>' : '') +
       (c.precisions ? '<div class="precisions">' + esc(c.precisions) + '</div>' : '') +
@@ -508,11 +532,20 @@
     var tous = evenements().slice().sort(function (a, b) { return a.date.localeCompare(b.date); });
     var aVenir = tous.filter(function (e) { return (e.dateFin || e.date) >= j; });
     var passes = tous.filter(function (e) { return (e.dateFin || e.date) < j; });
-    var h = '<h2>Événements</h2><p class="sous-titre">Validés en vert, à valider en grisé avec un point d\'interrogation.</p>';
+    var h = '<h2>Événements</h2><p class="sous-titre">Touche le bouton de chaque événement pour dire si tu y vas.</p>';
     if (!aVenir.length) h += '<div class="vide">Aucun événement à venir pour l\'instant.</div>';
     h += '<div class="cartes">' + aVenir.map(htmlEvenement).join('');
     if (passes.length) h += '<h3>Passés</h3>' + passes.reverse().map(htmlEvenement).join('');
-    return h + '</div>';
+    h += '</div>';
+    var ecartes = tousEvenements().filter(function (e) { return decisionDe(e) === 'refuse' && (e.dateFin || e.date) >= j; });
+    if (ecartes.length) {
+      h += '<details class="ecartes"><summary>Je n\'y vais pas (' + ecartes.length + ')</summary><div class="cartes">' + ecartes.map(htmlEvenement).join('') + '</div></details>';
+    }
+    return h;
+  }
+
+  function htmlBoutonDecision(e) {
+    return '<div class="actions"><button type="button" class="statut" data-detail="evt:' + esc(e.id) + '"' + (E.enCours[e.id] ? ' disabled' : '') + '>' + surligneDecision(decisionDe(e)) + '</button></div>';
   }
 
   function quandEvenement(e) {
@@ -521,16 +554,20 @@
   }
   function limiteEvenement(e) {
     if (e.dateLimiteInscription) return 'Date limite d\'inscription : ' + dateLongue(e.dateLimiteInscription);
-    return e.valide ? '' : 'Date limite d\'inscription : non renseignée';
+    return decisionDe(e) === 'a_valider' ? 'Date limite d\'inscription : non renseignée' : '';
   }
 
   function htmlEvenement(e) {
     var limite = limiteEvenement(e);
-    return '<div class="carte ' + familleEvenement(e) + '"><div class="etiquette">' + (e.valide ? 'Validé' : 'À valider ?') + '</div>' +
-      '<div class="compte">' + esc(e.titre) + (e.valide ? '' : ' ?') + '</div><div class="meta">' + esc(quandEvenement(e)) + '</div>' +
+    return '<div class="carte ' + familleEvenement(e) + '">' +
+      '<div class="compte">' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</div><div class="meta">' + esc(quandEvenement(e)) + '</div>' +
       (e.lieu ? '<div class="meta">' + esc(e.lieu) + '</div>' : '') +
       (limite ? '<div class="precisions" style="margin-top:6px">' + esc(limite) + '</div>' : '') +
-      (e.note ? '<div class="precisions">' + esc(e.note) + '</div>' : '') + '</div>';
+      (e.note ? '<div class="precisions">' + esc(e.note) + '</div>' : '') + htmlLienEvenement(e) + htmlBoutonDecision(e) + '</div>';
+  }
+
+  function htmlLienEvenement(e) {
+    return lienSur(e.lien) ? '<div class="precisions"><a class="lien-dossier" href="' + esc(e.lien) + '" target="_blank" rel="noopener">Voir l\'événement</a></div>' : '';
   }
 
   /* ---------- Feuille de détail ---------- */
@@ -557,11 +594,14 @@
       if (!e) return;
       fam = familleEvenement(e);
       var limite = limiteEvenement(e);
-      h = '<div class="etiquette">' + (e.valide ? 'Événement validé' : 'Événement à valider') + '</div>' +
-        '<div class="grand-titre">' + esc(e.titre) + (e.valide ? '' : ' ?') + '</div>' +
+      h = '<div class="etiquette">Événement</div>' +
+        '<div class="grand-titre">' + esc(e.titre) + (estValide(e) ? '' : ' ?') + '</div>' +
         '<div class="meta">' + esc(quandEvenement(e)) + '</div>' + (e.lieu ? '<div class="meta">' + esc(e.lieu) + '</div>' : '') +
         (limite ? '<div class="precisions" style="margin-top:8px">' + esc(limite) + '</div>' : '') +
-        (e.note ? '<div class="precisions">' + esc(e.note) + '</div>' : '');
+        (e.note ? '<div class="precisions">' + esc(e.note) + '</div>' : '') + htmlLienEvenement(e) +
+        '<div class="etiquette" style="margin-top:14px">Ma décision</div><div class="choix">' + DECISIONS.map(function (x) {
+          return '<button type="button" class="statut' + (x[0] === decisionDe(e) ? ' actuel' : '') + '" data-decision="' + x[0] + '" data-id="' + esc(e.id) + '">' + surligneDecision(x[0]) + '</button>';
+        }).join('') + '</div><div class="meta">« Je n\'y vais pas » retire l\'événement de ton planning.</div>';
     } else if (genre === 'com') {
       fam = 'f-commentaire';
       var coms = commentairesDu(id);
@@ -620,6 +660,7 @@
     if (t.hasAttribute('data-aller')) { fermerDetail(); E.onglet = a('data-aller'); afficher(); window.scrollTo(0, 0); return; }
     if (t.hasAttribute('data-detail')) { ouvrirDetail(a('data-detail')); return; }
     if (t.hasAttribute('data-choix')) { fermerDetail(); changerStatut(a('data-id'), a('data-choix')); return; }
+    if (t.hasAttribute('data-decision')) { fermerDetail(); deciderEvenement(a('data-id'), a('data-decision')); return; }
     if (t.id === 'feuille-fermer') { fermerDetail(); return; }
     if (t.hasAttribute('data-sel')) { E.jourSel = a('data-sel'); afficher(); return; }
     if (t.hasAttribute('data-sem')) { deplacerSemaine(Number(a('data-sem')) * 7); return; }

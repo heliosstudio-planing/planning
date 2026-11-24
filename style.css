@@ -352,3 +352,15 @@ body.fige { overflow: hidden; }
   .mois-detail { position: sticky; top: 64px; }
   .mois-detail h3 { margin-top: 12px; }
 }
+
+
+/* Décision pour chaque événement */
+.sl-ev-a_valider { --sl: #DAD5CC; }   /* gris : à décider */
+.sl-ev-valide    { --sl: #A9D4FF; }   /* bleu : j'y vais */
+.sl-ev-a_acheter { --sl: #FFBE85; }   /* orange : il reste à acheter la place */
+.sl-ev-achetee   { --sl: #8FE6B8; }   /* vert : tout est réglé */
+.sl-ev-refuse    { --sl: #F5B8C4; }   /* rose pâle : je n'y vais pas */
+.ecartes { margin: 18px 0; }
+.ecartes summary { cursor: pointer; padding: 10px 0; color: var(--marron-doux); text-decoration: underline; text-underline-offset: 3px; }
+.ecartes .carte { opacity: .75; }
+.carte .actions { margin-top: 8px; }
