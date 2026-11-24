@@ -421,52 +421,87 @@
         '<span class="num">' + versDate(d).getUTCDate() + '</span><span class="marques">' + marquesDu(d) + '</span>' + minisDu(d) + '</button>';
       d = ajouter(d, 1);
     }
-    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div>' + htmlAPlacer() + htmlCalendrier(debut) + '</div>';
+    h += '</div><div class="legende">' + LEGENDE.map(function (l) { return '<span>' + marque(l[0]) + l[1] + '</span>'; }).join('') + '</div></div>' + htmlCalendrier() + '</div>';
     h += '<div class="mois-detail"><h3>' + esc(majuscule(dateLongue(choisi))) + '</h3>' + htmlListe(choisi) + '</div></div>';
     return h;
   }
 
-  /* ---------- Ce qui attend un jour ---------- */
-  function htmlAPlacer() {
-    var l = (E.planning && E.planning.aPlacer) || [];
-    if (!l.length) return '';
-    return '<div class="bloc-calendrier"><div class="etiquette">À placer, sans jour pour l\'instant</div><ul class="a-placer">' + l.map(function (p) {
-      return '<li>' + icone(p.type) + '<span>' + esc(p.titre) + '</span></li>';
-    }).join('') + '</ul></div>';
-  }
-
-  /* ---------- Fichier pour le calendrier iCloud « Instagram » ---------- */
-  // Période couverte par le fichier d'un mois : le mois entier, élargi au cycle qui le touche
-  // (lancement : 30/11 au 4/01), jamais avant aujourd'hui. Réajouter un fichier ne crée pas de doublon.
-  function plageCalendrier(debutMois) {
-    var debut = debutMois;
-    var fin = ajouter(moisSuivant(debutMois), -1);
-    ((E.planning && E.planning.cycles) || []).forEach(function (c) {
-      if (c.fin < debutMois || c.debut > ajouter(moisSuivant(debutMois), -1)) return;
-      if (c.debut < debut) debut = c.debut;
-      if (c.fin > fin) fin = c.fin;
-    });
+  /* ---------- Calendrier iCloud « Instagram » ---------- */
+  // Tout ce qui est à venir et à heure fixe : c'est ce que contient le fichier du calendrier.
+  function momentsCalendrier() {
     var j = aujourdhui();
-    if (debut < j) debut = j;
-    return debut <= fin ? [debut, fin] : null;
+    return publications().filter(function (p) { return p.heure && p.type !== 'story_spontanee' && p.date >= j; })
+      .sort(function (x, y) { return (x.date + x.heure).localeCompare(y.date + y.heure); })
+      .map(function (p) { return { id: p.id, date: p.date, heure: p.heure, type: p.type, titre: p.titre }; });
   }
+  function nomMoment(m) { return (famille(m.type) === 'f-post' ? 'Post ' : 'Story ') + heure(m.heure); }
+  function quandMoment(m) { return dateCourte(m.date) + ', ' + nomMoment(m); }
 
-  function momentsCalendrier(debut, fin) {
-    return publications().filter(function (p) { return p.heure && p.type !== 'story_spontanee' && p.date >= debut && p.date <= fin; });
+  // Différences entre le planning et ce que Jodie a mis dans son iPhone (null : on ne sait pas encore)
+  function changementsCalendrier() {
+    var memo = E.planning && E.planning.calendrierAjoute;
+    if (!memo) return null;
+    var j = aujourdhui(), actuels = momentsCalendrier(), avant = {}, la = {}, r = { ajouts: [], modifs: [], retraits: [] };
+    memo.moments.forEach(function (m) { avant[m.id] = m; });
+    actuels.forEach(function (m) {
+      la[m.id] = true;
+      var v = avant[m.id];
+      if (!v) r.ajouts.push(m);
+      else if (v.date !== m.date || v.heure !== m.heure || famille(v.type) !== famille(m.type)) r.modifs.push({ de: v, a: m });
+      else if (v.titre !== m.titre) r.modifs.push({ a: m });
+    });
+    memo.moments.forEach(function (m) { if (m.date >= j && !la[m.id]) r.retraits.push(m); });
+    r.total = r.ajouts.length + r.modifs.length + r.retraits.length;
+    return r;
   }
+  function calendrierARefaire() { var c = changementsCalendrier(); return c ? c.total > 0 : momentsCalendrier().length > 0; }
 
-  function htmlCalendrier(debutMois) {
-    var h = '<div class="bloc-calendrier"><div class="etiquette">Calendrier iPhone « Instagram »</div>';
-    var plage = plageCalendrier(debutMois);
-    if (!plage) {
-      return h + '<p class="meta">Ce mois est passé : rien à ajouter.</p></div>';
+  function htmlCalendrier() {
+    var l = momentsCalendrier(), c = changementsCalendrier(), refaire = calendrierARefaire();
+    var h = '<div class="bloc-calendrier' + (refaire ? ' a-refaire' : '') + '"><div class="etiquette">Calendrier iPhone « Instagram »</div>';
+    if (!l.length && !refaire) return h + '<p class="meta">Aucun moment à heure fixe à venir.</p></div>';
+    if (!c) h += '<p class="meta"><strong>À ajouter une première fois</strong>, pour que je sache ensuite te prévenir des changements.</p>';
+    else if (!c.total) h += '<p class="meta"><span class="surligne sl-prete">À jour</span> depuis le ' + esc(dateLongue(E.planning.calendrierAjoute.le.slice(0, 10))) + '.</p>';
+    else {
+      h += '<p class="meta"><strong>' + c.total + ' changement' + (c.total > 1 ? 's' : '') + ' à reporter dans ton iPhone</strong></p>';
+      if (c.retraits.length) h += '<div class="meta">À supprimer toi-même dans l\'app Calendrier :</div><ul>' + c.retraits.map(function (m) { return '<li>' + esc(quandMoment(m)) + ' (« ' + esc(m.titre) + ' »)</li>'; }).join('') + '</ul>';
+      var autres = c.modifs.map(function (m) {
+        return m.de ? 'Déplacé : ' + quandMoment(m.de) + ', devient ' + quandMoment(m.a) : 'Nouveau titre : ' + quandMoment(m.a) + ' (« ' + m.a.titre + ' »)';
+      }).concat(c.ajouts.map(function (m) { return 'Nouveau : ' + quandMoment(m) + ' (« ' + m.titre + ' »)'; }));
+      if (autres.length) h += '<details class="preparation"><summary>Voir ce que le bouton va mettre à jour (' + autres.length + ')</summary><ul>' + autres.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></details>';
     }
-    var n = momentsCalendrier(plage[0], plage[1]).length;
-    if (!n) return h + '<p class="meta">Aucun moment de publication à heure fixe du ' + esc(dateCourte(plage[0])) + ' au ' + esc(dateCourte(plage[1])) + '</p></div>';
-    var lien = CONFIG.messager + '?cle=' + encodeURIComponent(E.cle) + '&ics=1&debut=' + plage[0] + '&fin=' + plage[1];
-    return h + '<p class="meta">' + n + ' moment' + (n > 1 ? 's' : '') + ' de publication du ' + esc(dateCourte(plage[0])) + ' au ' + esc(dateCourte(plage[1])) +
-      ', avec une alerte 15 minutes avant.</p>' +
-      '<a class="bouton plein" href="' + esc(lien) + '" target="_blank" rel="noopener">Ajouter à mon calendrier</a></div>';
+    if (l.length) {
+      var lien = CONFIG.messager + '?cle=' + encodeURIComponent(E.cle) + '&ics=1&debut=' + aujourdhui() + '&fin=' + l[l.length - 1].date;
+      h += '<a class="bouton ' + (refaire ? 'rouge' : '') + '" data-ics href="' + esc(lien) + '" target="_blank" rel="noopener">Ajouter à mon calendrier</a>';
+    }
+    if (refaire && (lireLocal('icsEnvoye') || !l.length)) {
+      h += '<p class="meta" style="margin-top:12px">Une fois les événements ajoutés dans « Instagram » sur ton iPhone' + (c && c.retraits.length ? ', et les anciens supprimés' : '') + ' :</p>' +
+        '<button type="button" class="bouton" data-calendrier-fait' + (E.enCours.calendrier ? ' disabled' : '') + '>C\'est fait, mon calendrier est à jour</button>';
+    }
+    return h + '</div>';
+  }
+
+  function calendrierFait() {
+    var moments = momentsCalendrier();
+    try { moments = JSON.parse(lireLocal('icsEnvoye')) || moments; } catch (e) { /* rien */ }
+    var ancien = E.planning.calendrierAjoute;
+    E.planning.calendrierAjoute = { le: aujourdhui() + 'T00:00:00+04:00', moments: moments };
+    E.enCours.calendrier = true; afficher();
+    envoyer({ action: 'calendrierAjoute', moments: moments })
+      .then(function () { ecrireLocal('icsEnvoye', ''); })
+      .catch(function () { E.planning.calendrierAjoute = ancien; alert("Le changement n'a pas pu être enregistré. Vérifie ta connexion et réessaie."); })
+      .then(function () { delete E.enCours.calendrier; afficher(); });
+  }
+
+  /* ---------- Écran De côté ---------- */
+  function ecranCote() {
+    var l = (E.planning && E.planning.aPlacer) || [];
+    var h = '<h2>De côté</h2><p class="sous-titre">Ce que tu gardes pour plus tard, sans jour. Touche un élément pour lui choisir un jour ou le supprimer.</p>';
+    if (!l.length) return h + '<div class="vide">Rien de côté pour l\'instant.</div>';
+    return h + '<div class="cartes">' + l.map(function (p) {
+      return '<div class="carte ' + famille(p.type) + '"><div class="etiquette">' + icone(p.type) + ' ' + esc(TYPES[p.type]) + '</div><div class="compte">' + esc(p.titre) + '</div>' +
+        '<div class="actions"><button type="button" class="bouton" data-detail="cote:' + esc(p.id) + '"' + (E.enCours['cote:' + p.id] ? ' disabled' : '') + '>Choisir un jour ou supprimer</button></div></div>';
+    }).join('') + '</div>';
   }
 
   // Petites étiquettes lisibles dans les cases du mois (tablette et ordinateur)
@@ -550,7 +585,7 @@
       '<div class="boutons"><button type="button" class="bouton" data-copier="' + esc(c.id) + '">Copier le commentaire</button>' +
       '<button type="button" class="bouton' + (c.fait ? '' : ' plein') + '" data-fait="' + esc(c.id) + '"' + (E.enCours[c.id] ? ' disabled' : '') + '>' +
       (c.fait ? 'Remettre à faire' : 'Marquer comme fait') + '</button>' +
-      (c.fait ? '' : '<button type="button" class="bouton" data-detail="uncom:' + esc(c.id) + '">Déplacer</button>') + '</div></div>';
+      (c.fait ? '' : '<button type="button" class="bouton" data-detail="uncom:' + esc(c.id) + '">Déplacer ou supprimer</button>') + '</div></div>';
   }
 
   /* ---------- Écran Événements ---------- */
@@ -612,18 +647,18 @@
 
   /* ---------- Déplacer un élément ---------- */
   function htmlDeplacer(genre, id, date, h) {
-    var j = aujourdhui(), avecHeure = genre === 'pub';
-    var raccourcis = [[j, 'Aujourd\'hui'], [ajouter(j, 1), 'Demain'], [ajouter(date, 7), 'Une semaine plus tard']]
-      .filter(function (x, i) { return x[0] !== date && (i < 2 || x[0] > ajouter(j, 1)); });
-    return '<details class="deplacer"><summary class="bouton">Déplacer</summary><div class="deplacer-choix" data-genre="' + genre + '" data-id="' + esc(id) + '">' +
+    var j = aujourdhui(), avecHeure = genre === 'pub' || genre === 'cote';
+    var raccourcis = [[j, 'Aujourd\'hui'], [ajouter(j, 1), 'Demain'], [ajouter(date || j, 7), 'Une semaine plus tard']]
+      .filter(function (x, i) { return x[0] !== date && (i < 2 || (date && x[0] > ajouter(j, 1))); });
+    return '<details class="deplacer"><summary class="bouton">' + (genre === 'cote' ? 'Choisir un jour' : 'Déplacer') + '</summary><div class="deplacer-choix" data-genre="' + genre + '" data-id="' + esc(id) + '">' +
       '<div class="boutons">' + raccourcis.map(function (x) {
         return '<button type="button" class="bouton" data-vers="' + x[0] + '">' + x[1] + ' (' + esc(dateCourte(x[0])) + ')</button>';
       }).join('') + '</div>' +
       '<label>Ou un autre jour<input type="date" class="champ-date" value="' + esc(date) + '"></label>' +
       (avecHeure ? '<label>Heure<input type="time" class="champ-heure" value="' + esc(h || '') + '"></label>' : '') +
       '<button type="button" class="bouton plein" data-enregistrer-deplacement>Enregistrer</button>' +
-      (genre === 'pub' ? '<div class="meta">Ton calendrier iPhone ne change pas tout seul : réappuie ensuite sur « Ajouter à mon calendrier », dans l\'onglet Mois.</div>' : '') +
-      '</div></details>';
+      (avecHeure ? '<div class="meta">Ton calendrier iPhone ne change pas tout seul : réappuie ensuite sur « Ajouter à mon calendrier », dans l\'onglet Mois.</div>' : '') +
+      '</div></details>' + htmlRetirer(genre, id);
   }
 
   function deplacer(genre, id, date, h) {
@@ -631,6 +666,12 @@
     var avant = JSON.stringify(E.planning);
     var cle = 'deplacement:' + genre + ':' + id;
     if (genre === 'pub') { var p = trouverPublication(id); var d0 = dossierPour(p); if (p.date !== date && !p.dossierId && d0 && d0.id) p.dossierId = d0.id; p.date = date; p.heure = h; }
+    if (genre === 'cote') {
+      var q = trouverPublication(id);
+      E.planning.aPlacer = E.planning.aPlacer.filter(function (x) { return x !== q; });
+      delete q.periode; q.date = date; q.heure = h;
+      E.planning.publications.push(q);
+    }
     if (genre === 'com') commentaires().forEach(function (c) { if (c.id === id) c.date = date; });
     if (genre === 'comsDuJour') commentaires().forEach(function (c) { if (c.date === id && !c.fait) c.date = date; });
     if (genre === 'evt') { var e = trouverEvenement(id); e.dateFin = ajouter(e.dateFin || e.date, ecart(e.date, date)); e.date = date; }
@@ -638,9 +679,47 @@
     if (E.onglet === 'semaine') E.jourSel = date;
     if (E.onglet === 'mois') { E.moisVue = premier(date); E.jourMois = date; }
     E.enCours[cle] = true; afficher();
-    envoyer({ action: 'deplacer', genre: genre, id: id, date: date, heure: h })
+    envoyer(genre === 'cote' ? { action: 'placer', id: id, date: date, heure: h } : { action: 'deplacer', genre: genre, id: id, date: date, heure: h })
       .catch(function () { E.planning = JSON.parse(avant); alert("Le déplacement n'a pas pu être enregistré. Vérifie ta connexion et réessaie."); })
       .then(function () { delete E.enCours[cle]; afficher(); });
+  }
+
+  function htmlRetirer(genre, id) {
+    if (genre !== 'pub' && genre !== 'cote' && genre !== 'com') return '';
+    return '<details class="deplacer"><summary class="bouton">Retirer</summary><div class="deplacer-choix">' +
+      (genre === 'pub' ? '<button type="button" class="bouton plein" data-cote="' + esc(id) + '">Mettre de côté (je le garde)</button>' : '') +
+      '<button type="button" class="bouton danger" data-supprimer="' + genre + '" data-id="' + esc(id) + '">Supprimer définitivement</button></div></details>';
+  }
+
+  function supprimer(genre, id) {
+    var liste = { pub: 'publications', cote: 'aPlacer', com: 'commentaires' }[genre];
+    var x = (E.planning[liste] || []).filter(function (y) { return y.id === id; })[0];
+    if (!x) return;
+    var nom = x.titre || 'le commentaire pour ' + x.compte;
+    if (!confirm('Supprimer définitivement « ' + nom + ' » ?\n\nTu ne pourras pas annuler.' + (genre === 'com' ? '' : ' Son dossier dans le Drive, lui, ne sera pas supprimé.'))) return;
+    fermerDetail();
+    var avant = JSON.stringify(E.planning);
+    E.planning[liste] = E.planning[liste].filter(function (y) { return y !== x; });
+    E.enCours['supprimer:' + id] = true; afficher();
+    envoyer({ action: 'supprimer', genre: genre, id: id })
+      .catch(function () { E.planning = JSON.parse(avant); alert("La suppression n'a pas pu être enregistrée. Vérifie ta connexion et réessaie."); })
+      .then(function () { delete E.enCours['supprimer:' + id]; afficher(); });
+  }
+
+  function mettreDeCote(id) {
+    var avant = JSON.stringify(E.planning);
+    var p = trouverPublication(id);
+    if (!p) return;
+    var d0 = dossierPour(p);
+    if (!p.dossierId && d0 && d0.id) p.dossierId = d0.id;
+    E.planning.publications = E.planning.publications.filter(function (x) { return x !== p; });
+    delete p.date;
+    p.periode = 'Plus tard, jour à choisir';
+    E.planning.aPlacer = (E.planning.aPlacer || []).concat([p]);
+    E.enCours['cote:' + id] = true; afficher();
+    envoyer({ action: 'mettreDeCote', id: id })
+      .catch(function () { E.planning = JSON.parse(avant); alert("Le changement n'a pas pu être enregistré. Vérifie ta connexion et réessaie."); })
+      .then(function () { delete E.enCours['cote:' + id]; afficher(); });
   }
 
   /* ---------- Feuille de détail ---------- */
@@ -663,6 +742,15 @@
         '<div class="etiquette" style="margin-top:14px">Statut</div><div class="choix">' + STATUTS.map(function (s) {
           return '<button type="button" class="statut s-' + s[0] + (s[0] === p.statut ? ' actuel' : '') + '" data-choix="' + s[0] + '" data-id="' + esc(p.id) + '">' + surligne(s[0]) + '</button>';
         }).join('') + '</div>';
+    } else if (genre === 'cote') {
+      var m = trouverPublication(id);
+      if (!m) return;
+      fam = famille(m.type);
+      var dm = m.dossierId ? dossierPour(m) : null;
+      h = '<div class="etiquette">' + icone(m.type) + esc(TYPES[m.type]) + '</div><div class="grand-titre">' + esc(m.titre) + '</div>' +
+        '<div class="meta">Mise de côté, sans jour pour l\'instant</div>' +
+        (dm ? '<div style="margin-top:8px"><a class="lien-dossier" href="' + esc(dm.url) + '" target="_blank" rel="noopener">Ouvrir son dossier</a></div>' : '') +
+        htmlNotePreparation(m, dm) + htmlDeplacer('cote', m.id, '', m.heure).replace('<details class="deplacer"', '<details open class="deplacer"');
     } else if (genre === 'evt') {
       var e = trouverEvenement(id);
       if (!e) return;
@@ -721,9 +809,10 @@
       zone.innerHTML = '<div class="vide" style="margin-top:24px">' + (E.horsLigne ? 'Impossible de joindre le planning. Vérifie ta connexion.' : 'Chargement du planning…') + '</div>';
       return;
     }
-    var ecrans = { semaine: ecranSemaine, mois: ecranMois, commentaires: ecranCommentaires, evenements: ecranEvenements };
+    var ecrans = { semaine: ecranSemaine, mois: ecranMois, commentaires: ecranCommentaires, evenements: ecranEvenements, cote: ecranCote };
     zone.innerHTML = (ecrans[E.onglet] || ecranSemaine)();
     document.querySelectorAll('#onglets button').forEach(function (b) { b.classList.toggle('actif', b.getAttribute('data-onglet') === E.onglet); });
+    document.querySelector('#onglets [data-onglet="mois"]').classList.toggle('alerte', calendrierARefaire());
     if (E.luLe) {
       var hh = E.luLe.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: CONFIG.fuseau }).replace(':', ' h ');
       document.getElementById('etat-maj').textContent = (E.horsLigne ? 'Hors connexion, version de ' : 'Mis à jour à ') + hh;
@@ -741,6 +830,9 @@
     if (t.hasAttribute('data-detail')) { ouvrirDetail(a('data-detail')); return; }
     if (t.hasAttribute('data-choix')) { fermerDetail(); changerStatut(a('data-id'), a('data-choix')); return; }
     if (t.hasAttribute('data-decision')) { fermerDetail(); deciderEvenement(a('data-id'), a('data-decision')); return; }
+    if (t.hasAttribute('data-supprimer')) { supprimer(a('data-supprimer'), a('data-id')); return; }
+    if (t.hasAttribute('data-calendrier-fait')) { calendrierFait(); return; }
+    if (t.hasAttribute('data-cote')) { fermerDetail(); mettreDeCote(a('data-cote')); return; }
     if (t.hasAttribute('data-vers') || t.hasAttribute('data-enregistrer-deplacement')) {
       var zone = t.closest('.deplacer-choix');
       var champH = zone.querySelector('.champ-heure');
@@ -775,7 +867,13 @@
       if (v) { E.cle = v; ecrireLocal('cle', v); charger(); }
       return;
     }
-    if (t.id === 'actualiser') { charger(); return; }
+    if (t.id === 'actualiser') { charger(); verifierVersion(true); return; }
+  });
+
+  document.addEventListener('click', function (ev) {
+    if (!ev.target.closest('[data-ics]')) return;
+    ecrireLocal('icsEnvoye', JSON.stringify(momentsCalendrier()));
+    setTimeout(afficher, 300);
   });
 
   function deplacerSemaine(jours) {
@@ -818,7 +916,21 @@
   });
 
   document.getElementById('voile').addEventListener('click', function (ev) { if (ev.target.id === 'voile') fermerDetail(); });
-  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') charger(); });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { charger(); verifierVersion(false); } });
+
+  // Une nouvelle version de l'application est-elle en ligne ? Si oui, on recharge la page
+  // (jamais pendant un enregistrement ni quand une fiche est ouverte).
+  var derniereVerification = Date.now();
+  function verifierVersion(toutDeSuite) {
+    if (!window.VERSION_APP || (!toutDeSuite && Date.now() - derniereVerification < 300000)) return;
+    derniereVerification = Date.now();
+    fetch('app.js?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (texte) {
+        if (texte && texte !== window.VERSION_APP && !Object.keys(E.enCours).length && document.getElementById('voile').hidden) location.reload();
+      })
+      .catch(function () { /* hors connexion : rien à faire */ });
+  }
   setInterval(function () { if (document.visibilityState === 'visible' && document.getElementById('voile').hidden) charger(); }, 60000);
 
   /* ---------- Démarrage ---------- */

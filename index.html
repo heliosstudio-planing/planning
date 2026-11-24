@@ -34,6 +34,7 @@
     <button type="button" data-onglet="mois">Mois</button>
     <button type="button" data-onglet="commentaires">À commenter</button>
     <button type="button" data-onglet="evenements">Événements</button>
+    <button type="button" data-onglet="cote">De côté</button>
   </nav>
 
   <div class="voile" id="voile" hidden>
@@ -43,7 +44,28 @@
     </div>
   </div>
 
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script>
+    // Charge toujours la dernière version de l'application, sans attendre la mémoire du téléphone.
+    // Sans connexion (ou si c'est trop long), on garde la version déjà en mémoire.
+    (function () {
+      function lire(f) {
+        var limite = new Promise(function (ok, non) { setTimeout(non, 6000); });
+        return Promise.race([fetch(f + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; return r.text(); }), limite]);
+      }
+      function poser(balise, texte) { var e = document.createElement(balise); e.textContent = texte; document.head.appendChild(e); }
+      function secours() {
+        var c = document.createElement('script');
+        c.src = 'config.js';
+        c.onload = function () { var s = document.createElement('script'); s.src = 'app.js'; document.body.appendChild(s); };
+        document.body.appendChild(c);
+      }
+      Promise.all([lire('style.css'), lire('config.js'), lire('app.js')]).then(function (t) {
+        window.VERSION_APP = t[2];
+        poser('style', t[0]);
+        poser('script', t[1]);
+        poser('script', t[2]);
+      }, secours);
+    })();
+  </script>
 </body>
 </html>
