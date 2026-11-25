@@ -448,9 +448,10 @@
       var v = avant[m.id];
       if (!v) r.ajouts.push(m);
       else if (v.date !== m.date || v.heure !== m.heure || famille(v.type) !== famille(m.type)) r.modifs.push({ de: v, a: m });
-      else if (v.titre !== m.titre) r.modifs.push({ a: m });
     });
     memo.moments.forEach(function (m) { if (m.date >= j && !la[m.id]) r.retraits.push(m); });
+    // L'iPhone ne déplace pas un événement qu'il a déjà : l'ancien est à supprimer, le nouveau sera ajouté
+    r.aSupprimer = r.retraits.concat(r.modifs.map(function (m) { return m.de; }).filter(function (m) { return m.date >= j; }));
     r.total = r.ajouts.length + r.modifs.length + r.retraits.length;
     return r;
   }
@@ -464,18 +465,18 @@
     else if (!c.total) h += '<p class="meta"><span class="surligne sl-prete">À jour</span> depuis le ' + esc(dateLongue(E.planning.calendrierAjoute.le.slice(0, 10))) + '.</p>';
     else {
       h += '<p class="meta"><strong>' + c.total + ' changement' + (c.total > 1 ? 's' : '') + ' à reporter dans ton iPhone</strong></p>';
-      if (c.retraits.length) h += '<div class="meta">À supprimer toi-même dans l\'app Calendrier :</div><ul>' + c.retraits.map(function (m) { return '<li>' + esc(quandMoment(m)) + ' (« ' + esc(m.titre) + ' »)</li>'; }).join('') + '</ul>';
+      if (c.aSupprimer.length) h += '<div class="meta">À supprimer toi-même dans l\'app Calendrier :</div><ul>' + c.aSupprimer.map(function (m) { return '<li>' + esc(quandMoment(m)) + ' (« ' + esc(m.titre) + ' »)</li>'; }).join('') + '</ul>';
       var autres = c.modifs.map(function (m) {
-        return m.de ? 'Déplacé : ' + quandMoment(m.de) + ', devient ' + quandMoment(m.a) : 'Nouveau titre : ' + quandMoment(m.a) + ' (« ' + m.a.titre + ' »)';
+        return 'Déplacé : ' + quandMoment(m.a) + ' (« ' + m.a.titre + ' »)';
       }).concat(c.ajouts.map(function (m) { return 'Nouveau : ' + quandMoment(m) + ' (« ' + m.titre + ' »)'; }));
-      if (autres.length) h += '<details class="preparation"><summary>Voir ce que le bouton va mettre à jour (' + autres.length + ')</summary><ul>' + autres.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></details>';
+      if (autres.length) h += '<details class="preparation"><summary>Voir ce que le bouton va ajouter (' + autres.length + ')</summary><ul>' + autres.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></details>';
     }
     if (l.length) {
       var lien = CONFIG.messager + '?cle=' + encodeURIComponent(E.cle) + '&ics=1&debut=' + aujourdhui() + '&fin=' + l[l.length - 1].date;
       h += '<a class="bouton ' + (refaire ? 'rouge' : '') + '" data-ics href="' + esc(lien) + '" target="_blank" rel="noopener">Ajouter à mon calendrier</a>';
     }
     if (refaire && (lireLocal('icsEnvoye') || !l.length)) {
-      h += '<p class="meta" style="margin-top:12px">Une fois les événements ajoutés dans « Instagram » sur ton iPhone' + (c && c.retraits.length ? ', et les anciens supprimés' : '') + ' :</p>' +
+      h += '<p class="meta" style="margin-top:12px">Une fois les événements ajoutés dans « Instagram » sur ton iPhone' + (c && c.aSupprimer.length ? ', et les anciens supprimés' : '') + ' :</p>' +
         '<button type="button" class="bouton" data-calendrier-fait' + (E.enCours.calendrier ? ' disabled' : '') + '>C\'est fait, mon calendrier est à jour</button>';
     }
     return h + '</div>';
