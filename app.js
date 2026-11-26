@@ -228,7 +228,10 @@
 
   /* ---------- Rappels ---------- */
   function rappels(jour) {
-    var r = E.problemes.map(function (x) { return { titre: 'Une mise à jour n\'a pas pu être ajoutée', texte: x.fichier + ' : ' + x.raison + '. Montre ce message à la conversation Claude qui l\'a déposée.' }; });
+    var r = E.problemes.map(function (x) {
+      if (x.fichier === 'Protection du planning') return { titre: 'Ton planning a été protégé', texte: x.raison };
+      return { titre: 'Une mise à jour n\'a pas pu être ajoutée', texte: x.fichier + ' : ' + x.raison + '. Montre ce message à la conversation Claude qui l\'a déposée.' };
+    });
     // Les événements eux-mêmes sont visibles dans la semaine : seul le rappel de date limite reste en haut.
     evenements().forEach(function (e) {
       var d = decisionDe(e);
